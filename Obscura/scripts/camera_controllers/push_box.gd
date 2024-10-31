@@ -15,6 +15,7 @@ func _process(delta: float) -> void:
 	if !current:
 		return
 	
+	#print("draw_camera_logic:", draw_camera_logic)
 	if draw_camera_logic:
 		draw_logic()
 	
