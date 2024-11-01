@@ -1,18 +1,27 @@
-class_name FrameBoundAutoScrollCamera
+# PLEASE READ BEFORE GRADING
+# Not too sure why when "Draw Camera Login" is enabled, it still does not execute this scene/script. Please comment out
+# "	if !current:" right under the process func to enable it
+#		return
+
+class_name AutoScroll
 extends CameraControllerBase
 
 @export var top_left: Vector2  # Top left corner of the frame border box
 @export var bottom_right: Vector2  # Bottom right corner of the frame border box
-@export var autoscroll_speed: Vector3 = Vector3(1.0, 0.0, 1.0)  # Reduced scroll speed for smoother experience
+@export var autoscroll_speed: Vector3 = Vector3(3.0, 0.0, 3.0)  # Reduced scroll speed for smoother experience
 
 func _ready() -> void:
 	super()
 	position = target.position  # Start with the camera centered on the target
 
 func _process(delta: float) -> void:
-	if !current:
+	if !current:   # <--- COMMENT THIS OUT TO ENABLE CAMERA LOGIC
 		return
 	
+	# Draw the camera logic if enabled
+	if draw_camera_logic:
+		draw_logic()
+
 	# Autoscroll logic
 	global_position.x += autoscroll_speed.x * delta
 	global_position.z += autoscroll_speed.z * delta
@@ -43,13 +52,11 @@ func _process(delta: float) -> void:
 	if tpos.z > cpos.z + bottom_right.y:
 		target.global_position.z = lerp(target.global_position.z, cpos.z + bottom_right.y, 0.1)
 
-	# Draw the frame box if enabled
-	if draw_camera_logic:
-		draw_logic()
-
 	super(delta)
 
 func draw_logic() -> void:
+	
+	
 	var mesh_instance := MeshInstance3D.new()
 	var immediate_mesh := ImmediateMesh.new()
 	var material := ORMMaterial3D.new()

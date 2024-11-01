@@ -1,77 +1,96 @@
-class_name PositionLockLerpSmoothingCamera
+class_name TargetFocus
 extends CameraControllerBase
 
-@export var lead_speed: float = 7.0  # Speed at which the camera moves toward the direction of input
-@export var catchup_delay_duration: float = 0.5  # Delay before camera starts catching up to the target
+@export var lead_speed: float = 10.0  # Speed at which the camera moves toward the direction of input, faster than vessel speed
+@export var catchup_delay_duration: float = 0.5  # Time delay before the camera starts catching up to the target
 @export var catchup_speed: float = 2.0  # Speed at which the camera catches up when the player stops
-@export var leash_distance: float = 5.0  # Maximum allowed distance between the vessel and the camera center
+@export var leash_distance: float = 5.0  # Maximum allowed distance between the vessel and the center of the camera
 
 var last_input_time: float = 0.0
+var last_direction: Vector2 = Vector2.ZERO  # Store the direction vector of the vessel
+var crosshair_offset: Vector2 = Vector2.ZERO  # Offset of the crosshair from the center
+var crosshair_instance: MeshInstance3D  # Reference to the crosshair mesh instance
 
 func _ready() -> void:
 	super()
-	position = target.position  # Start with the camera centered on the target
+	position = target.position + Vector3(0, dist_above_target, 0)
+	rotation_degrees = Vector3(-90, 0, 0)
 
 func _process(delta: float) -> void:
-	if !current:
-		return
+
+	#if !current:
+	#    return
+	
+	# Draw the camera logic if enabled
+	if draw_camera_logic:
+		draw_logic()
+
 	var tpos = target.global_position
 	var cpos = global_position
 
-	# Update last input time if there is player input
-	if Input.is_action_pressed("move_left") or Input.is_action_pressed("move_right") or Input.is_action_pressed("move_up") or Input.is_action_pressed("move_down"):
+	# Determine player input direction
+	var direction = Vector2.ZERO
+	if Input.is_action_pressed("ui_left"):
+		direction.x -= 1
+	if Input.is_action_pressed("ui_right"):
+		direction.x += 1
+	if Input.is_action_pressed("ui_up"):
+		direction.y -= 1
+	if Input.is_action_pressed("ui_down"):
+		direction.y += 1
+
+	# Normalize the direction vector to handle multiple keys pressed simultaneously
+	if direction != Vector2.ZERO:
+		direction = direction.normalized()
 		last_input_time = Time.get_ticks_msec() / 1000.0
+		last_direction = direction
 
-	# Calculate the distance between the camera and the target
-	var distance_to_target = tpos.distance_to(Vector3(cpos.x, tpos.y, cpos.z))
+	# Update crosshair offset based on player input
+	crosshair_offset += direction * lead_speed * delta
 
-	# If the target is moving, lead the camera at lead_speed
-	if distance_to_target > leash_distance:
-		global_position.x = lerp(global_position.x, tpos.x, lead_speed * delta)
-		global_position.z = lerp(global_position.z, tpos.z, lead_speed * delta)
-	elif (Time.get_ticks_msec() / 1000.0) - last_input_time > catchup_delay_duration:
-		# If the player stops, after the delay, catch up to the target at catchup_speed
-		global_position.x = lerp(global_position.x, tpos.x, catchup_speed * delta)
-		global_position.z = lerp(global_position.z, tpos.z, catchup_speed * delta)
+	# Keep the crosshair within a 10x10 box
+	crosshair_offset.x = clamp(crosshair_offset.x, -1.0, 1.)
+	crosshair_offset.y = clamp(crosshair_offset.y, -1.0, 1.0)
 
-	# Draw the crosshair if enabled
-	if draw_camera_logic:
-		draw_crosshair()
+	# Move the camera based on crosshair offset
+	global_position.x = tpos.x + crosshair_offset.x
+	global_position.z = tpos.z + crosshair_offset.y
+
+	# If the player stops moving, catch up to the target after the specified delay
+	if (Time.get_ticks_msec() / 1000.0) - last_input_time > catchup_delay_duration:
+		crosshair_offset = crosshair_offset.lerp(Vector2.ZERO, catchup_speed * delta)
+
+	# Ensure the vessel follows the camera position
+	target.global_position.x = lerp(target.global_position.x, global_position.x, catchup_speed * delta)
+	target.global_position.z = lerp(target.global_position.z, global_position.z, catchup_speed * delta)
+
+	# Keep the camera centered above the vessel
+	global_position.y = tpos.y + dist_above_target
 
 	super(delta)
 
-func draw_crosshair() -> void:
-	var mesh_instance := MeshInstance3D.new()
+func draw_logic() -> void:
 	var immediate_mesh := ImmediateMesh.new()
-	var material := ORMMaterial3D.new()
+	var material := StandardMaterial3D.new()
 
-	mesh_instance.mesh = immediate_mesh
-	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	immediate_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 
-	# Set material properties for the crosshair
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_color = Color.BLACK
-
-	# Begin drawing the crosshair
-	immediate_mesh.surface_begin(Mesh.PRIMITIVE_LINES, material)
-
-	# Set crosshair boundaries for a 5 by 5 unit cross
-	var left: float = -2.5
-	var right: float = 2.5
-	var top: float = -2.5
-	var bottom: float = 2.5
-
-	# Draw horizontal line
-	immediate_mesh.surface_add_vertex(Vector3(left, 0, 0))
-	immediate_mesh.surface_add_vertex(Vector3(right, 0, 0))
-
-	# Draw vertical line
-	immediate_mesh.surface_add_vertex(Vector3(0, 0, top))
-	immediate_mesh.surface_add_vertex(Vector3(0, 0, bottom))
+	# Draw a larger cross (5 by 5 units)
+	immediate_mesh.surface_add_vertex(Vector3(-2.5, 0, 0))
+	immediate_mesh.surface_add_vertex(Vector3(2.5, 0, 0))
+	immediate_mesh.surface_add_vertex(Vector3(0, 0, -2.5))
+	immediate_mesh.surface_add_vertex(Vector3(0, 0, 2.5))
 
 	immediate_mesh.surface_end()
 
-	# Add the crosshair mesh to the camera
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color.BLACK
+
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.mesh = immediate_mesh
+	mesh_instance.material_override = material
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
 	add_child(mesh_instance)
 	mesh_instance.global_transform = Transform3D.IDENTITY
 	mesh_instance.global_position = Vector3(global_position.x, target.global_position.y, global_position.z)
